@@ -6,6 +6,9 @@
 // 遊戲型別
 export * from './game';
 
+// 遊戲模式型別
+export * from './gameMode';
+
 // 角色型別
 export * from './role';
 
@@ -17,3 +20,4 @@ export * from './action';
 
 // 事件型別
 export * from './event';
+

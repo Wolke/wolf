@@ -18,6 +18,8 @@ interface CharacterResponse {
     profession: string;
     personality: string;
     speechStyle: string;
+    voiceStyle: string;
+    appearance: string;
     catchphrase?: string;
 }
 
@@ -42,6 +44,8 @@ export async function generateCharacter(): Promise<NpcCharacter> {
         profession: response.profession,
         personality: response.personality,
         speechStyle: response.speechStyle,
+        voiceStyle: response.voiceStyle,
+        appearance: response.appearance,
         catchphrase: response.catchphrase,
     };
 }
@@ -71,6 +75,8 @@ export async function generateMultipleCharacters(
             profession: c.profession,
             personality: c.personality,
             speechStyle: c.speechStyle,
+            voiceStyle: c.voiceStyle,
+            appearance: c.appearance,
             catchphrase: c.catchphrase,
         }));
     } catch (error) {

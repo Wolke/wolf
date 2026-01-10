@@ -3,6 +3,8 @@
  * @module core/types/game
  */
 
+import { GameMode } from './gameMode';
+
 /** 遊戲階段 */
 export enum GamePhase {
   /** 遊戲初始化 */
@@ -37,6 +39,8 @@ export interface GameConfig {
   seerCount: number;
   /** 是否啟用 AI */
   enableAI: boolean;
+  /** 遊戲模式 */
+  gameMode: GameMode;
   /** 發言時間限制（秒）*/
   discussionTimeLimit?: number;
 }
@@ -62,4 +66,6 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   villagerCount: 3,
   seerCount: 1,
   enableAI: true,
+  gameMode: GameMode.MODERN_GANGSTER,
 };
+

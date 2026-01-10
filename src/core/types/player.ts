@@ -11,15 +11,19 @@ export interface NpcCharacter {
     name: string;
     /** 年齡 */
     age: number;
-    /** 職業 */
+    /** 職業（真實生活職業，如：討債小弟、夜市攤販、直播主等）*/
     profession: string;
     /** 個性描述 */
     personality: string;
-    /** 說話風格 */
+    /** 說話風格（如：8+9 風格、文青風、台語腔等）*/
     speechStyle: string;
+    /** 口音/語調風格（用於 OpenAI Speech API，如：低沉沙啞、高亢尖銳、慵懶拖長音等）*/
+    voiceStyle: string;
+    /** 外貌描述（用於 DALL-E 生成大頭貼）*/
+    appearance: string;
     /** 口頭禪（可選）*/
     catchphrase?: string;
-    /** 大頭貼 URL（Phase 2）*/
+    /** 大頭貼 URL */
     avatarUrl?: string;
 }
 
