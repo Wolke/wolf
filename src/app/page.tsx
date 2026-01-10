@@ -1,65 +1,117 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect, useState } from 'react';
+import { GameCLI, createGameCLI } from '@/cli/GameCLI';
+import { initializeOpenAI } from '@/services/ai/openai';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export default function Home() {
+  const [logs, setLogs] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [apiKey, setApiKey] = useState<string>('');
+  const { gasWebAppUrl } = useSettingsStore();
+
+  // 初始化 AI
+  useEffect(() => {
+    async function init() {
+      if (!gasWebAppUrl) return;
+
+      try {
+        setLogs(prev => [...prev, '🔄 正在從 GAS 取得 API Key...']);
+        const response = await fetch(gasWebAppUrl);
+        const data = await response.json();
+
+        if (data.success && data.apiKey) {
+          initializeOpenAI({ apiKey: data.apiKey });
+          setApiKey(data.apiKey);
+          setLogs(prev => [...prev, '✅ API Key 取得成功！']);
+          setIsReady(true);
+        } else {
+          setLogs(prev => [...prev, '❌ 取得 API Key 失敗：' + (data.error || '未知錯誤')]);
+        }
+      } catch (error) {
+        setLogs(prev => [...prev, '❌ 連線錯誤：' + (error as Error).message]);
+      }
+    }
+
+    init();
+  }, [gasWebAppUrl]);
+
+  const startGame = async () => {
+    if (!isReady || !apiKey) return;
+
+    setIsLoading(true);
+    setLogs(['🎮 遊戲開始！', '']);
+
+    // 覆蓋 console.log 來捕捉輸出
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args) => {
+      originalLog(...args);
+      setLogs(prev => [...prev, args.join(' ')]);
+    };
+    console.error = (...args) => {
+      originalError(...args);
+      setLogs(prev => [...prev, '❌ ' + args.join(' ')]);
+    };
+
+    try {
+      const cli = createGameCLI();
+      // 使用已取得的 API Key 初始化
+      cli.initializeAI(apiKey);
+      await cli.startGame('玩家');
+    } catch (error) {
+      setLogs(prev => [...prev, '❌ 遊戲錯誤：' + (error as Error).message]);
+      originalError('Game error:', error);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div style={{
+      backgroundColor: '#1a1a2e',
+      color: '#eee',
+      minHeight: '100vh',
+      padding: '20px',
+      fontFamily: 'monospace'
+    }}>
+      <h1 style={{ color: '#e94560' }}>🐺 狼人殺遊戲 - Phase 1 純文字版</h1>
+
+      <div style={{ marginBottom: '20px' }}>
+        <button
+          onClick={startGame}
+          disabled={!isReady || isLoading}
+          style={{
+            padding: '12px 24px',
+            fontSize: '16px',
+            backgroundColor: isReady ? '#e94560' : '#666',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: isReady ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {isLoading ? '遊戲進行中...' : isReady ? '🎮 開始遊戲' : '⏳ 初始化中...'}
+        </button>
+      </div>
+
+      <div style={{
+        backgroundColor: '#0f0f23',
+        padding: '20px',
+        borderRadius: '8px',
+        height: '70vh',
+        overflow: 'auto',
+        whiteSpace: 'pre-wrap',
+        lineHeight: '1.6',
+      }}>
+        {logs.map((log, i) => (
+          <div key={i}>{log}</div>
+        ))}
+      </div>
     </div>
   );
 }
