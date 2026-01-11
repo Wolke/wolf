@@ -265,7 +265,11 @@ export default function Home() {
           >
             <option value="">🎲 隨機角色</option>
             <option value={RoleType.WEREWOLF}>🐺 狼人</option>
+            <option value={RoleType.WOLF_KING}>👑 狼王</option>
             <option value={RoleType.SEER}>🔮 預言家</option>
+            <option value={RoleType.WITCH}>🧪 女巫</option>
+            <option value={RoleType.HUNTER}>🏹 獵人</option>
+            <option value={RoleType.GUARD}>🛡️ 守衛</option>
             <option value={RoleType.VILLAGER}>👤 村民</option>
           </select>
 
