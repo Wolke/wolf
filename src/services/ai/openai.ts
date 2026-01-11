@@ -4,6 +4,7 @@
  */
 
 import OpenAI from 'openai';
+import { logApiRequest, logApiResponse } from '@/lib/debug';
 
 /** OpenAI 配置 */
 export interface OpenAIConfig {
@@ -13,6 +14,23 @@ export interface OpenAIConfig {
 
 /** 預設模型 */
 export const DEFAULT_MODEL = 'gpt-4o-mini';
+
+/** 當前使用的模型（可由設定覆蓋）*/
+let currentModel: string = DEFAULT_MODEL;
+
+/**
+ * 設定使用的模型
+ */
+export function setCurrentModel(model: string): void {
+    currentModel = model;
+}
+
+/**
+ * 取得當前使用的模型
+ */
+export function getCurrentModel(): string {
+    return currentModel;
+}
 
 /** OpenAI 客戶端實例（單例）*/
 let openaiClient: OpenAI | null = null;
@@ -64,16 +82,15 @@ export async function chatCompletion(
         throw new Error('OpenAI 尚未初始化，請先呼叫 initializeOpenAI');
     }
 
-    console.log('\n📤 ======== OpenAI API Request ========');
-    console.log('📌 Model:', options?.model || DEFAULT_MODEL);
-    console.log('📝 Messages:');
-    messages.forEach((msg, i) => {
-        console.log(`  [${i}] ${msg.role}:`, msg.content);
-    });
-    console.log('========================================\n');
+    // Debug 日誌（只在 console）
+    const modelToUse = options?.model || currentModel;
+    logApiRequest(
+        modelToUse,
+        messages.map(m => ({ role: m.role, content: m.content }))
+    );
 
     const response = await openaiClient.chat.completions.create({
-        model: options?.model || DEFAULT_MODEL,
+        model: modelToUse,
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 500,
@@ -81,10 +98,8 @@ export async function chatCompletion(
 
     const content = response.choices[0]?.message?.content;
 
-    console.log('\n📥 ======== OpenAI API Response ========');
-    console.log('📦 Content:', content);
-    console.log('📊 Usage:', response.usage);
-    console.log('=========================================\n');
+    // Debug 日誌（只在 console）
+    logApiResponse(content ?? null, response.usage);
 
     if (!content) {
         throw new Error('OpenAI 返回空內容');
@@ -108,16 +123,15 @@ export async function chatCompletionJSON<T>(
         throw new Error('OpenAI 尚未初始化，請先呼叫 initializeOpenAI');
     }
 
-    console.log('\n📤 ======== OpenAI API Request (JSON) ========');
-    console.log('📌 Model:', options?.model || DEFAULT_MODEL);
-    console.log('📝 Messages:');
-    messages.forEach((msg, i) => {
-        console.log(`  [${i}] ${msg.role}:`, typeof msg.content === 'string' ? msg.content.substring(0, 200) + '...' : msg.content);
-    });
-    console.log('================================================\n');
+    // Debug 日誌（只在 console）
+    const modelToUse = options?.model || currentModel;
+    logApiRequest(
+        modelToUse,
+        messages.map(m => ({ role: m.role, content: m.content }))
+    );
 
     const response = await openaiClient.chat.completions.create({
-        model: options?.model || DEFAULT_MODEL,
+        model: modelToUse,
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 500,
@@ -126,10 +140,8 @@ export async function chatCompletionJSON<T>(
 
     const content = response.choices[0]?.message?.content;
 
-    console.log('\n📥 ======== OpenAI API Response (JSON) ========');
-    console.log('📦 Content:', content);
-    console.log('📊 Usage:', response.usage);
-    console.log('=================================================\n');
+    // Debug 日誌（只在 console）
+    logApiResponse(content ?? null, response.usage);
 
     if (!content) {
         throw new Error('OpenAI 返回空內容');

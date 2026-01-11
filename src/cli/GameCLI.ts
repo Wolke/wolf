@@ -7,7 +7,7 @@
  */
 
 import { GameEngine } from '@/core/engine/GameEngine';
-import { GamePhase, GameConfig, DEFAULT_GAME_CONFIG } from '@/core/types/game';
+import { GamePhase, GameConfig, DEFAULT_GAME_CONFIG, PLAYER_COUNT_CONFIGS } from '@/core/types/game';
 import { Player, NpcCharacter, isPlayerAlive } from '@/core/types/player';
 import { RoleType, ROLE_DISPLAY_NAMES } from '@/core/types/role';
 import { ActionType, createAction, SpeechAction } from '@/core/types/action';
@@ -16,6 +16,7 @@ import { generateMultipleCharacters } from '@/services/ai/CharacterGenerator';
 import { SpeechGenerator } from '@/services/ai/SpeechGenerator';
 import { DecisionMaker } from '@/services/ai/DecisionMaker';
 import { generateDefaultNpcCharacters } from '@/core/utils/roleDistribution';
+import { requestChoice, requestTextInput } from '@/lib/playerInput';
 
 /**
  * 遊戲 CLI 控制器
@@ -25,11 +26,14 @@ export class GameCLI {
     private speechGenerator: SpeechGenerator;
     private decisionMaker: DecisionMaker;
     private useAI: boolean = false;
+    private isSimulation: boolean = false;
+    private customLogger?: (message: string) => void;
 
-    constructor() {
+    constructor(customLogger?: (message: string) => void) {
         this.engine = new GameEngine();
         this.speechGenerator = new SpeechGenerator();
         this.decisionMaker = new DecisionMaker();
+        this.customLogger = customLogger;
     }
 
     /**
@@ -43,55 +47,64 @@ export class GameCLI {
 
     /**
      * 開始新遊戲
+     * @param forcedRole - 強制指定的角色（測試用）
+     * @param gameConfig - 遊戲配置（人數等）
      */
-    async startGame(playerName: string = '你'): Promise<void> {
+    async startGame(
+        playerName: string = '你',
+        isSimulation: boolean = false,
+        forcedRole?: RoleType,
+        gameConfig: GameConfig = DEFAULT_GAME_CONFIG
+    ): Promise<void> {
+        this.isSimulation = isSimulation;
+
+        const configInfo = PLAYER_COUNT_CONFIGS[gameConfig.playerCount];
+
         this.log('\n========================================');
         this.log('🐺 歡迎來到狼人殺遊戲！');
+        this.log(`🎮 模式：${isSimulation ? '模擬模式' : '玩家模式'}`);
+        this.log(`👥 人數：${configInfo?.description || `${gameConfig.playerCount}人局`}`);
+        if (forcedRole) {
+            this.log(`🎯 指定角色：${ROLE_DISPLAY_NAMES[forcedRole]}`);
+        }
         this.log('========================================\n');
 
-        // 生成 NPC 角色
+        // 生成 NPC 角色（根據人數）
+        const npcCount = gameConfig.playerCount - 1;
         let npcCharacters: NpcCharacter[];
 
         if (this.useAI && isOpenAIInitialized()) {
             this.log('🎭 正在使用 AI 生成 NPC 角色...');
             try {
-                npcCharacters = await generateMultipleCharacters(5);
+                npcCharacters = await generateMultipleCharacters(npcCount);
                 this.log('✅ NPC 角色生成完成！\n');
             } catch (error) {
-                this.log('⚠️ AI 生成失敗，使用預設角色');
-                npcCharacters = generateDefaultNpcCharacters(5);
+                this.log('⚠️ AI 角色生成失敗，使用預設角色');
+                npcCharacters = generateDefaultNpcCharacters(npcCount);
             }
         } else {
-            this.log('📋 使用預設 NPC 角色');
-            npcCharacters = generateDefaultNpcCharacters(5);
+            npcCharacters = generateDefaultNpcCharacters(npcCount);
         }
 
-        // 顯示 NPC 角色
-        this.log('【本局玩家】');
-        this.log(`1. ${playerName}（你）`);
-        npcCharacters.forEach((c, i) => {
-            this.log(`${i + 2}. ${c.name}（${c.profession}，${c.age}歲）`);
-        });
-        this.log('');
+        // 初始化遊戲（傳入指定角色）
+        this.engine.initialize(gameConfig, 'human_player', npcCharacters, forcedRole);
 
-        // 初始化遊戲
-        this.engine.initialize(DEFAULT_GAME_CONFIG, 'human_player', npcCharacters);
-
-        // 顯示人類玩家的角色
+        // 設定人類玩家名稱
         const humanPlayer = this.engine.getState().getHumanPlayer();
+        if (humanPlayer) {
+            humanPlayer.displayName = playerName;
+        }
+
+        // 顯示遊戲資訊
+        this.showGameInfo();
+
+        // 顯示玩家角色
         if (humanPlayer) {
             this.log(`\n🎴 你的身份是：【${ROLE_DISPLAY_NAMES[humanPlayer.role]}】`);
             this.showRoleInfo(humanPlayer.role);
         }
 
-        // 開始遊戲循環
-        await this.gameLoop();
-    }
-
-    /**
-     * 遊戲主循環
-     */
-    private async gameLoop(): Promise<void> {
+        // 遊戲主迴圈
         while (true) {
             // 進入下一階段
             const phaseResult = this.engine.nextPhase();
@@ -161,21 +174,27 @@ export class GameCLI {
             }
 
             const targets = this.engine.getValidTargetsForHuman();
-            this.log('\n選擇今晚要殺的目標：');
-            targets.forEach((t, i) => {
-                this.log(`  ${i + 1}. ${t.displayName}`);
-            });
 
-            // 在真實遊戲中這裡會等待玩家輸入
-            // Phase 1 簡化版：模擬玩家選擇第一個目標
-            const choice = 0;
-            const targetId = targets[choice]?.id;
+            if (this.isSimulation) {
+                // 模擬模式：隨機選擇
+                const choice = Math.floor(Math.random() * targets.length);
+                const targetId = targets[choice]?.id;
+                if (targetId) {
+                    this.engine.executeAction(
+                        createAction(ActionType.WEREWOLF_KILL, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                    );
+                    this.log(`\n你選擇了 ${targets[choice].displayName}`);
+                }
+            } else {
+                // 玩家模式：等待輸入
+                const options = targets.map(t => ({ id: t.id, label: t.displayName }));
+                const selectedId = await requestChoice('🐺 選擇今晚要殺的目標：', options);
 
-            if (targetId) {
                 this.engine.executeAction(
-                    createAction(ActionType.WEREWOLF_KILL, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                    createAction(ActionType.WEREWOLF_KILL, humanPlayer.id, this.engine.getCurrentRound(), { targetId: selectedId })
                 );
-                this.log(`\n你選擇了 ${targets[choice].displayName}`);
+                const selectedTarget = targets.find(t => t.id === selectedId);
+                this.log(`\n你選擇了 ${selectedTarget?.displayName}`);
             }
         }
 
@@ -197,7 +216,6 @@ export class GameCLI {
                         createAction(ActionType.WEREWOLF_KILL, werewolf.id, this.engine.getCurrentRound(), { targetId: decision.targetId })
                     );
                 } catch {
-                    // 失敗時隨機選擇
                     const randomTarget = targets[Math.floor(Math.random() * targets.length)];
                     if (randomTarget) {
                         this.engine.executeAction(
@@ -206,7 +224,6 @@ export class GameCLI {
                     }
                 }
             } else {
-                // 不使用 AI 時隨機選擇
                 const randomTarget = targets[Math.floor(Math.random() * targets.length)];
                 if (randomTarget) {
                     this.engine.executeAction(
@@ -226,20 +243,33 @@ export class GameCLI {
 
         if (humanPlayer?.role === RoleType.SEER && isPlayerAlive(humanPlayer)) {
             const targets = this.engine.getValidTargetsForHuman();
-            this.log('\n🔮 選擇要查驗的對象：');
-            targets.forEach((t, i) => {
-                this.log(`  ${i + 1}. ${t.displayName}`);
-            });
 
-            // Phase 1 簡化版：模擬選擇第一個目標
-            const choice = 0;
-            const targetId = targets[choice]?.id;
+            if (this.isSimulation) {
+                // 模擬模式：隨機選擇
+                const choice = Math.floor(Math.random() * targets.length);
+                const targetId = targets[choice]?.id;
 
-            if (targetId) {
+                if (targetId) {
+                    const result = this.engine.executeAction(
+                        createAction(ActionType.SEER_CHECK, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                    );
+                    this.log(`\n${result.message}`);
+                    if (result.data?.isWerewolf !== undefined) {
+                        this.log(result.data.isWerewolf ? '🐺 是狼人！' : '👤 是好人');
+                    }
+                }
+            } else {
+                // 玩家模式：等待輸入
+                const options = targets.map(t => ({ id: t.id, label: t.displayName }));
+                const selectedId = await requestChoice('🔮 選擇要查驗的對象：', options);
+
                 const result = this.engine.executeAction(
-                    createAction(ActionType.SEER_CHECK, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                    createAction(ActionType.SEER_CHECK, humanPlayer.id, this.engine.getCurrentRound(), { targetId: selectedId })
                 );
                 this.log(`\n${result.message}`);
+                if (result.data?.isWerewolf !== undefined) {
+                    this.log(result.data.isWerewolf ? '🐺 是狼人！' : '👤 是好人');
+                }
             }
         }
 
@@ -255,16 +285,14 @@ export class GameCLI {
                     const result = this.engine.executeAction(
                         createAction(ActionType.SEER_CHECK, seer.id, this.engine.getCurrentRound(), { targetId: decision.targetId })
                     );
-                    // 記錄查驗結果供後續使用
-                    const target = alivePlayers.find(p => p.id === decision.targetId);
-                    if (target && result.data) {
+                    // 記錄查驗結果
+                    if (result.data?.isWerewolf !== undefined) {
                         this.decisionMaker.recordSeerCheck(seer.id, {
-                            name: target.displayName,
-                            isWerewolf: result.data.isWerewolf as boolean,
+                            name: String(result.data.targetName || ''),
+                            isWerewolf: Boolean(result.data.isWerewolf),
                         });
                     }
                 } catch {
-                    // 失敗時隨機選擇
                     const randomTarget = targets[Math.floor(Math.random() * targets.length)];
                     if (randomTarget) {
                         this.engine.executeAction(
@@ -293,7 +321,7 @@ export class GameCLI {
             this.log('\n☀️ 昨晚是平安夜，沒有人死亡。\n');
         } else {
             const deadNames = deaths
-                .map(id => this.engine.getState().getPlayer(id)?.displayName)
+                .map((id: string) => this.engine.getState().getPlayer(id)?.displayName)
                 .filter(Boolean)
                 .join('、');
             this.log(`\n☀️ 昨晚 ${deadNames} 被狼人殺害了。\n`);
@@ -311,15 +339,19 @@ export class GameCLI {
 
         this.log('\n【討論階段】每位玩家輪流發言\n');
 
-        // 追蹤發言順序
         let speakerIndex = 0;
 
         for (const player of alivePlayers) {
             if (player.isHuman) {
                 // 人類玩家發言
-                this.log(`\n輪到你發言（輸入發言內容）：`);
-                // Phase 1 簡化版：模擬發言
-                const speech = '我覺得需要多觀察一下...';
+                let speech: string;
+
+                if (this.isSimulation) {
+                    speech = '我覺得需要多觀察一下...';
+                } else {
+                    speech = await requestTextInput('💬 輪到你發言：');
+                }
+
                 this.engine.executeAction(
                     createAction<SpeechAction>(
                         ActionType.SPEECH,
@@ -336,9 +368,7 @@ export class GameCLI {
 
                 if (this.useAI && isOpenAIInitialized()) {
                     try {
-                        // 取得之前的發言記錄
                         const previousSpeeches = this.engine.getDiscussionContext(speakerIndex);
-
                         speech = await this.speechGenerator.generateForPlayer(player, gameContext, {
                             speakingOrder: speakerIndex + 1,
                             totalPlayers: alivePlayers.length,
@@ -349,7 +379,6 @@ export class GameCLI {
                         speech = '......（沉默不語）';
                     }
                 } else {
-                    // 不使用 AI 時的預設發言
                     const defaultSpeeches = [
                         '我覺得需要多觀察一下。',
                         '昨晚的情況很可疑...',
@@ -371,7 +400,6 @@ export class GameCLI {
                 this.log(`\n${player.displayName}：${speech}`);
                 speakerIndex++;
 
-                // 模擬發言間隔
                 await this.sleep(500);
             }
         }
@@ -386,29 +414,40 @@ export class GameCLI {
 
         this.log('\n【投票階段】請選擇要投票的對象\n');
 
-        // 顯示候選人
         const candidates = alivePlayers;
-        candidates.forEach((c, i) => {
-            this.log(`  ${i + 1}. ${c.displayName}${c.isHuman ? '（你）' : ''}`);
-        });
-        this.log(`  0. 棄票`);
 
         // 處理人類玩家投票
         if (humanPlayer && isPlayerAlive(humanPlayer)) {
-            // Phase 1 簡化版：隨機投票
-            const choice = Math.floor(Math.random() * candidates.length);
-            const targetId = candidates[choice]?.id || undefined;
+            const otherCandidates = candidates.filter(c => c.id !== humanPlayer.id);
 
-            this.engine.executeAction(
-                createAction(ActionType.VOTE, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
-            );
-            this.log(`\n你投票給了 ${candidates[choice]?.displayName || '棄票'}`);
+            if (this.isSimulation) {
+                // 模擬模式：隨機投票
+                const choice = Math.floor(Math.random() * otherCandidates.length);
+                const targetId = otherCandidates[choice]?.id;
+
+                this.engine.executeAction(
+                    createAction(ActionType.VOTE, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                );
+                this.log(`你投票給了 ${otherCandidates[choice]?.displayName || '棄票'}`);
+            } else {
+                // 玩家模式：等待輸入
+                const options = otherCandidates.map(c => ({ id: c.id, label: c.displayName }));
+                options.push({ id: 'ABSTAIN', label: '棄票' });
+
+                const selectedId = await requestChoice('🗳️ 請選擇要投票的對象：', options);
+                const targetId = selectedId === 'ABSTAIN' ? undefined : selectedId;
+
+                this.engine.executeAction(
+                    createAction(ActionType.VOTE, humanPlayer.id, this.engine.getCurrentRound(), { targetId })
+                );
+
+                const selectedTarget = candidates.find(c => c.id === selectedId);
+                this.log(`你投票給了 ${selectedTarget?.displayName || '棄票'}`);
+            }
         }
 
         // 處理 NPC 投票
         const npcPlayers = alivePlayers.filter(p => !p.isHuman);
-
-        // 取得完整的討論記錄
         const discussionHistory = this.engine.getFullDiscussionForVoting();
 
         for (const npc of npcPlayers) {
@@ -416,20 +455,17 @@ export class GameCLI {
 
             if (this.useAI && isOpenAIInitialized()) {
                 try {
-                    // 使用完整的討論記錄來決策
                     const decision = await this.decisionMaker.vote(npc, discussionHistory, otherPlayers, alivePlayers);
                     this.engine.executeAction(
                         createAction(ActionType.VOTE, npc.id, this.engine.getCurrentRound(), { targetId: decision.targetId })
                     );
                 } catch {
-                    // 失敗時隨機選擇
                     const randomTarget = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
                     this.engine.executeAction(
                         createAction(ActionType.VOTE, npc.id, this.engine.getCurrentRound(), { targetId: randomTarget?.id })
                     );
                 }
             } else {
-                // 不使用 AI 時隨機投票
                 const randomTarget = otherPlayers[Math.floor(Math.random() * otherPlayers.length)];
                 this.engine.executeAction(
                     createAction(ActionType.VOTE, npc.id, this.engine.getCurrentRound(), { targetId: randomTarget?.id })
@@ -452,8 +488,22 @@ export class GameCLI {
      * 處決階段
      */
     private handleExecution(): void {
-        // 投票結果已在 handleVote 中處理
-        // 這裡只是過渡階段
+        // 處決已在 resolveVote 中處理
+    }
+
+    /**
+     * 顯示遊戲資訊
+     */
+    private showGameInfo(): void {
+        const players = this.engine.getState().getPlayers();
+
+        this.log('【本局玩家】');
+        players.forEach((p, i) => {
+            const characterInfo = p.character
+                ? `${p.character.profession}，${p.character.age}歲`
+                : '';
+            this.log(`${i + 1}. ${p.displayName}${p.isHuman ? '（你）' : `（${characterInfo}）`}`);
+        });
     }
 
     /**
@@ -463,27 +513,24 @@ export class GameCLI {
         const result = this.engine.checkGameEnd();
         if (!result) return;
 
-        this.log('\n========================================');
-        this.log('🎮 遊戲結束！');
-        this.log('========================================\n');
-
-        this.log(`🏆 ${result.winner === 'WEREWOLF' ? '狼人' : '村民'}陣營獲勝！\n`);
+        this.log('\n🎮 遊戲結束！');
+        this.log(`🏆 ${result.winner === 'WEREWOLF' ? '狼人陣營' : '村民陣營'}獲勝！`);
         this.log(result.summary);
 
-        // 顯示所有玩家身份
+        // 揭曉所有玩家身份
+        const players = this.engine.getState().getPlayers();
         this.log('\n【玩家身份揭曉】');
-        const players = this.engine.getPlayers();
         for (const player of players) {
-            const status = isPlayerAlive(player) ? '✅ 存活' : '❌ 死亡';
+            const status = player.status === 'ALIVE' ? '✅ 存活' : '❌ 死亡';
             this.log(`  ${player.displayName}: ${ROLE_DISPLAY_NAMES[player.role]} ${status}`);
         }
 
         // 顯示完整歷史
-        this.log('\n【完整遊戲歷史】');
         const history = this.engine.getFullHistory();
-        history.forEach(event => {
+        this.log('\n【完整遊戲歷史】');
+        for (const event of history) {
             this.log(`  [${event.type}] ${JSON.stringify(event.data)}`);
-        });
+        }
     }
 
     /**
@@ -496,7 +543,7 @@ export class GameCLI {
                 this.log('目標：消滅所有村民。');
                 break;
             case RoleType.VILLAGER:
-                this.log('你是村民，沒有特殊能力。');
+                this.log('你是村民！你沒有特殊能力。');
                 this.log('目標：通過投票找出並處決狼人。');
                 break;
             case RoleType.SEER:
@@ -511,6 +558,9 @@ export class GameCLI {
      */
     private log(message: string): void {
         console.log(message);
+        if (this.customLogger) {
+            this.customLogger(message);
+        }
     }
 
     /**
@@ -524,6 +574,6 @@ export class GameCLI {
 /**
  * 創建遊戲 CLI 實例
  */
-export function createGameCLI(): GameCLI {
-    return new GameCLI();
+export function createGameCLI(customLogger?: (message: string) => void): GameCLI {
+    return new GameCLI(customLogger);
 }

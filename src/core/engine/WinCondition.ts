@@ -5,7 +5,7 @@
 
 import { GameResult } from '../types/game';
 import { GameState } from '../state/GameState';
-import { Team, ROLE_TEAM_MAP, RoleType } from '../types/role';
+import { Team, ROLE_TEAM_MAP, RoleType, ROLE_DISPLAY_NAMES } from '../types/role';
 import { isPlayerAlive } from '../types/player';
 
 /**
@@ -102,12 +102,8 @@ export class WinConditionChecker {
      * 取得角色顯示名稱
      */
     private getRoleDisplayName(role: RoleType): string {
-        const names: Record<RoleType, string> = {
-            [RoleType.WEREWOLF]: '狼人',
-            [RoleType.VILLAGER]: '村民',
-            [RoleType.SEER]: '預言家',
-        };
-        return names[role] || role;
+        // 使用 ROLE_DISPLAY_NAMES
+        return ROLE_DISPLAY_NAMES[role] || role;
     }
 
     /**

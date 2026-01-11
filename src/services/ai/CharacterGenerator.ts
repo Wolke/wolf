@@ -58,10 +58,12 @@ export async function generateMultipleCharacters(
 ): Promise<NpcCharacter[]> {
     try {
         console.log('📤 正在呼叫 OpenAI API 生成角色...');
+        // 每個角色大約需要 150-200 tokens
+        const estimatedTokens = Math.max(1500, count * 200);
         const response = await promptJSON<MultipleCharactersResponse>(
             CHARACTER_SYSTEM_PROMPT,
             getMultipleCharactersPrompt(count),
-            { temperature: 0.9, maxTokens: 1000 }
+            { temperature: 0.9, maxTokens: estimatedTokens }
         );
         console.log('📥 API 回應:', response);
 

@@ -97,3 +97,25 @@ export const GAME_MODE_CONFIGS: Record<GameMode, GameModeConfig> = {
 export function getGameModeConfig(mode: GameMode): GameModeConfig {
     return GAME_MODE_CONFIGS[mode];
 }
+
+/** 遊玩模式（玩家操作 vs 模擬） */
+export enum PlayMode {
+    /** 玩家模式：人類玩家可以輸入發言和做選擇 */
+    PLAYER = 'PLAYER',
+    /** 模擬模式：所有行動自動進行 */
+    SIMULATION = 'SIMULATION',
+}
+
+/** 遊玩模式設定 */
+export interface PlayModeConfig {
+    /** 遊玩模式 */
+    playMode: PlayMode;
+    /** 是否在 UI 上顯示 debug 訊息（關閉時只 console.log）*/
+    showDebugInUI: boolean;
+}
+
+/** 預設遊玩模式設定 */
+export const DEFAULT_PLAY_MODE_CONFIG: PlayModeConfig = {
+    playMode: PlayMode.PLAYER,
+    showDebugInUI: false,
+};

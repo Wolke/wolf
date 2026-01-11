@@ -73,11 +73,13 @@ export class GameEngine implements IGameEngine {
 
     /**
      * 初始化遊戲
+     * @param forcedHumanRole - 強制指定人類玩家的角色（測試用）
      */
     initialize(
         config: GameConfig = DEFAULT_GAME_CONFIG,
         humanPlayerId: string = 'human_player',
-        npcCharacters?: NpcCharacter[]
+        npcCharacters?: NpcCharacter[],
+        forcedHumanRole?: RoleType
     ): void {
         // 驗證配置
         const validation = validateGameConfig(config);
@@ -93,7 +95,7 @@ export class GameEngine implements IGameEngine {
         const characters = npcCharacters || generateDefaultNpcCharacters(config.playerCount - 1);
 
         // 分配角色
-        const players = distributeRoles(config.playerCount, config, humanPlayerId, characters);
+        const players = distributeRoles(config.playerCount, config, humanPlayerId, characters, forcedHumanRole);
         this.state.setPlayers(players);
 
         // 記錄遊戲開始事件

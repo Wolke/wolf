@@ -18,9 +18,29 @@ export function generateRoleList(config: GameConfig): RoleType[] {
         roles.push(RoleType.WEREWOLF);
     }
 
+    // 添加狼王
+    for (let i = 0; i < (config.wolfKingCount || 0); i++) {
+        roles.push(RoleType.WOLF_KING);
+    }
+
     // 添加預言家
     for (let i = 0; i < config.seerCount; i++) {
         roles.push(RoleType.SEER);
+    }
+
+    // 添加女巫
+    for (let i = 0; i < (config.witchCount || 0); i++) {
+        roles.push(RoleType.WITCH);
+    }
+
+    // 添加獵人
+    for (let i = 0; i < (config.hunterCount || 0); i++) {
+        roles.push(RoleType.HUNTER);
+    }
+
+    // 添加守衛
+    for (let i = 0; i < (config.guardCount || 0); i++) {
+        roles.push(RoleType.GUARD);
     }
 
     // 添加村民
@@ -45,19 +65,33 @@ export function shuffle<T>(array: T[]): T[] {
 
 /**
  * 分配角色給玩家
+ * @param forcedHumanRole - 強制指定人類玩家的角色（測試用）
  */
 export function distributeRoles(
     playerCount: number,
     config: GameConfig,
     humanPlayerId: string,
-    npcCharacters: NpcCharacter[]
+    npcCharacters: NpcCharacter[],
+    forcedHumanRole?: RoleType
 ): Player[] {
     const roles = generateRoleList(config);
-    const shuffledRoles = shuffle(roles);
+    let shuffledRoles = shuffle(roles);
     const players: Player[] = [];
 
     // 隨機決定人類玩家的座位
     const humanSeatNumber = Math.floor(Math.random() * playerCount) + 1;
+
+    // 如果指定了人類玩家的角色，調整角色分配
+    if (forcedHumanRole) {
+        // 找到該角色在洗牌後的位置
+        const forcedRoleIndex = shuffledRoles.findIndex(r => r === forcedHumanRole);
+        if (forcedRoleIndex !== -1) {
+            // 交換位置，確保人類玩家得到指定角色
+            const humanRoleIndex = humanSeatNumber - 1;
+            [shuffledRoles[forcedRoleIndex], shuffledRoles[humanRoleIndex]] =
+                [shuffledRoles[humanRoleIndex], shuffledRoles[forcedRoleIndex]];
+        }
+    }
 
     let npcIndex = 0;
 
